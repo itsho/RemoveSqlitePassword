@@ -6,11 +6,11 @@ Remove known password from System.Data.SQLite database file
 2. the project uses Fody.Costura to embed these dlls into the main EXE file.
 
 # Usage examples:
-## Remove password from file:
+## Remove specified password from specified file:
 rsp.exe "TargetDb.Sqlite" "passwordToRemove"
 
-## Remove password from file in param, but use password in config file
+## Remove password from specified file, use password from config file
 rsp.exe "TargetDb.sqlite"
 
-## Remove password from first SQLite3 file in same directory, and password from config file
+## Remove password from *.SQLite3 file(s) in thesame directory, use password from config file
 rsp.exe

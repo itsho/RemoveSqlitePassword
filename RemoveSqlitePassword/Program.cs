@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
 using System.Data.SQLite;
@@ -13,9 +14,9 @@ namespace RemoveSqlitePassword
         {
             Assembly assembly = Assembly.GetExecutingAssembly();
             var fileVersionInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
-            string version = fileVersionInfo.ProductVersion; 
+            string version = fileVersionInfo.ProductVersion;
 
-            var strTargetFileName = string.Empty;
+            var lstTargetFiles = new List<string>();
 
             var strAssemblyFileName = System.IO.Path.GetFileName(assembly.Location);
 
@@ -34,7 +35,7 @@ namespace RemoveSqlitePassword
                 WriteInfo(strAssemblyFileName + $@" ""file1.sqlite3""");
 
                 Console.WriteLine("");
-                Console.WriteLine("To remove PW from FIRST SQLite file in local folder and load PW from config file:");
+                Console.WriteLine("To remove PW from *.SQLite3 files in local folder and load PW from config file:");
                 WriteInfo(strAssemblyFileName);
                 Console.WriteLine("");
 
@@ -43,7 +44,7 @@ namespace RemoveSqlitePassword
                 var lstFiles = System.IO.Directory.GetFiles(strCurrentDir, "*.SQLite3");
                 if (lstFiles.Length > 0)
                 {
-                    strTargetFileName = lstFiles[0];
+                    lstTargetFiles.AddRange(lstFiles);
                 }
                 else
                 {
@@ -54,7 +55,7 @@ namespace RemoveSqlitePassword
             else
             {
                 // param0 = file name
-                strTargetFileName = args[0];
+                lstTargetFiles.Add(args[0]);
             }
 
             // param1 = known pw (if param missing, will use pw from config)
@@ -70,75 +71,79 @@ namespace RemoveSqlitePassword
             }
             WriteTitle("===== Process Progress =====");
             Console.WriteLine("");
-            WriteInfo("INFO: File to process:");
-            Console.WriteLine(strTargetFileName);
+
             WriteInfo("INFO: PW length to use: " + strPw.Length + " chars");
 
             //var conn2 = new SQLiteConnection($"URI=file:{strFileName};Version=3;Password={strPw};");
             //var conn = new SQLiteConnection($"Data Source={strFileName};Password={strPw};");
 
-            bool blnIsOk = true;
-            try
+            foreach (var strTargetFile in lstTargetFiles)
             {
-                // open db file to remove PW
-                using (var conn = new SQLiteConnection($"Data Source={strTargetFileName};Password={strPw};"))
-                {
-                    WriteInfo("INFO: opening connection 1 to remove PW...");
-                    conn.Open();
-
-                    if (conn.State == ConnectionState.Open)
-                    {
-                        WriteInfo("INFO: Opened connection 1 successfully.");
-                        WriteInfo("INFO: removing password...");
-                        conn.ChangePassword("");
-                    }
-                    else
-                    {
-                        WriteError("ERROR: unable to open SQLite file - double check your PW!");
-                    }
-                    Console.WriteLine("INFO: closing connection 1...");
-                    conn.Close();
-                    //conn.Dispose();
-                }
-            }
-            catch (Exception ex)
-            {
-                blnIsOk = false;
-                if (ex.Message == "file is encrypted or is not a database\r\nnot an error")
-                {
-                    WriteError("ERROR while removing PW: Password is incorrect, or, file is already with blank PW");
-                }
-                else
-                {
-                    WriteError("ERROR while removing PW:");
-                    WriteError(ex.ToString());
-                }
-            }
-
-            if (blnIsOk)
-            {
+                WriteInfo("INFO: File to process:");
+                Console.WriteLine(strTargetFile);
+                bool blnIsOk = true;
                 try
                 {
-                    using (var connWithoutPw = new SQLiteConnection($"Data Source={strTargetFileName};"))
+                    // open db file to remove PW
+                    using (var conn = new SQLiteConnection($"Data Source={strTargetFile};Password={strPw};"))
                     {
-                        WriteInfo("INFO: opening connection 2 to test blank PW...");
-                        connWithoutPw.Open();
+                        WriteInfo("INFO: opening connection 1 to remove PW...");
+                        conn.Open();
 
-                        if (connWithoutPw.State == ConnectionState.Open)
+                        if (conn.State == ConnectionState.Open)
                         {
-                            WriteInfo("INFO: Opened connection 2 successfully - password removed successfully!");
+                            WriteInfo("INFO: Opened connection 1 successfully.");
+                            WriteInfo("INFO: removing password...");
+                            conn.ChangePassword("");
                         }
                         else
                         {
-                            WriteError("ERROR: connection 2 failed. double check your PW!");
+                            WriteError("ERROR: unable to open SQLite file - double check your PW!");
                         }
-                        connWithoutPw.Close();
+                        Console.WriteLine("INFO: closing connection 1...");
+                        conn.Close();
+                        //conn.Dispose();
                     }
                 }
                 catch (Exception ex)
                 {
-                    WriteError("ERROR while testing if PW removed successfully:");
-                    WriteError(ex.ToString());
+                    blnIsOk = false;
+                    if (ex.Message == "file is encrypted or is not a database\r\nnot an error")
+                    {
+                        WriteError("ERROR while removing PW: Password is incorrect, or, file is already with blank PW");
+                    }
+                    else
+                    {
+                        WriteError("ERROR while removing PW:");
+                        WriteError(ex.ToString());
+                    }
+                }
+
+                if (blnIsOk)
+                {
+                    try
+                    {
+                        using (var connWithoutPw = new SQLiteConnection($"Data Source={strTargetFile};"))
+                        {
+                            WriteInfo("INFO: opening connection 2 to test blank PW...");
+                            connWithoutPw.Open();
+
+                            if (connWithoutPw.State == ConnectionState.Open)
+                            {
+                                WriteInfo("INFO: Opened connection 2 successfully - password removed successfully!");
+                            }
+                            else
+                            {
+                                WriteError("ERROR: connection 2 failed. double check your PW!");
+                            }
+                            connWithoutPw.Close();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteError("ERROR while testing if PW removed successfully:");
+                        WriteError(ex.ToString());
+                    }
                 }
             }
 
