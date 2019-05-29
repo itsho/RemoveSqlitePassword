@@ -6,7 +6,8 @@ Remove known password from SQLite database file
 2. The project uses System.Data.SQLite dlls and embed these dlls as Embedded resource - that's why licensing is not explicitly stated.
 
 # Screenshot
-[Screenshot 1](Screenshot01.png)
+![Screenshot 1](Screenshot01.png)
+
 
 # Usage examples:
 
