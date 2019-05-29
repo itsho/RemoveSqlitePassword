@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Configuration;
-using System.Data;
-using System.Data.SQLite;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace RemoveSqlitePassword
@@ -12,43 +12,33 @@ namespace RemoveSqlitePassword
     {
         private static void Main(string[] args)
         {
-            Assembly assembly = Assembly.GetExecutingAssembly();
+            var assembly = Assembly.GetExecutingAssembly();
             var fileVersionInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
-            string version = fileVersionInfo.ProductVersion;
+            var version = fileVersionInfo.ProductVersion;
 
             var lstTargetFiles = new List<string>();
 
             var strAssemblyFileName = System.IO.Path.GetFileName(assembly.Location);
 
-            Console.WriteLine("");
-            WriteTitle("===== Remove SQLite Password " + version + " =====");
+            Log.WriteRegular("");
+            Log.WriteInfo($"===== Remove SQLite Password {version} =====", true);
             if (args.Length == 0)
             {
-                Console.WriteLine("param 0 = file name [Optional - will look for the first *.SQLite3 file in current folder]");
-                Console.WriteLine("param 1 = PW [Optional - can be set in config file]");
-                Console.WriteLine("");
-                WriteInfo("===== Examples: ===");
-                Console.WriteLine("To remove PW from fullpath file:");
-                WriteInfo(strAssemblyFileName + $@" ""C:\fullpath\file1.sqlite3"" ""mysuperpassword"" ");
-                Console.WriteLine("");
-                Console.WriteLine("To remove PW from local folder and load PW from config file:");
-                WriteInfo(strAssemblyFileName + $@" ""file1.sqlite3""");
-
-                Console.WriteLine("");
-                Console.WriteLine("To remove PW from *.SQLite3 files in local folder and load PW from config file:");
-                WriteInfo(strAssemblyFileName);
-                Console.WriteLine("");
+                WriteIntro(strAssemblyFileName);
 
                 var strCurrentDir = System.IO.Path.GetDirectoryName(assembly.Location);
 
-                var lstFiles = System.IO.Directory.GetFiles(strCurrentDir, "*.SQLite3");
-                if (lstFiles.Length > 0)
+                var lstFiles1 = System.IO.Directory.GetFiles(strCurrentDir, "*.SQLite3");
+                var lstFiles2 = System.IO.Directory.GetFiles(strCurrentDir, "*.SQLite");
+                var lstFiles = lstFiles1.Concat(lstFiles2).ToList();
+
+                if (lstFiles.Count > 0)
                 {
                     lstTargetFiles.AddRange(lstFiles);
                 }
                 else
                 {
-                    WriteError("ERROR: unable to find any SQLite3 target file in current directory!");
+                    Log.WriteError("ERROR: unable to find any target files (*.SQLite|*.SQLite3) in current directory!");
                     return;
                 }
             }
@@ -69,113 +59,60 @@ namespace RemoveSqlitePassword
                 // get current pw from config
                 strPw = ConfigurationManager.AppSettings["pwToRemove"];
             }
-            WriteTitle("===== Process Progress =====");
-            Console.WriteLine("");
 
-            WriteInfo("INFO: PW length to use: " + strPw.Length + " chars");
+            Log.WriteInfo("===== Process Progress =====", true);
+            Log.WriteRegular("");
 
-            //var conn2 = new SQLiteConnection($"URI=file:{strFileName};Version=3;Password={strPw};");
-            //var conn = new SQLiteConnection($"Data Source={strFileName};Password={strPw};");
+            Log.WriteInfo("INFO: PW length to use: " + strPw.Length + " chars");
 
             foreach (var strTargetFile in lstTargetFiles)
             {
-                WriteInfo("INFO: File to process:");
-                Console.WriteLine(strTargetFile);
-                bool blnIsOk = true;
-                try
-                {
-                    // open db file to remove PW
-                    using (var conn = new SQLiteConnection($"Data Source={strTargetFile};Password={strPw};"))
-                    {
-                        WriteInfo("INFO: opening connection 1 to remove PW...");
-                        conn.Open();
+                Log.WriteInfo($"INFO: Processing file: '{Path.GetFileName(strTargetFile)}'...", true);
 
-                        if (conn.State == ConnectionState.Open)
-                        {
-                            WriteInfo("INFO: Opened connection 1 successfully.");
-                            WriteInfo("INFO: removing password...");
-                            conn.ChangePassword("");
-                        }
-                        else
-                        {
-                            WriteError("ERROR: unable to open SQLite file - double check your PW!");
-                        }
-                        Console.WriteLine("INFO: closing connection 1...");
-                        conn.Close();
-                        //conn.Dispose();
-                    }
-                }
-                catch (Exception ex)
+                Log.WriteInfo("INFO: trying to remove password...");
+                if (Logic.RemovePassword(strTargetFile, strPw))
                 {
-                    blnIsOk = false;
-                    if (ex.Message == "file is encrypted or is not a database\r\nnot an error")
-                    {
-                        WriteError("ERROR while removing PW: Password is incorrect, or, file is already with blank PW");
-                    }
-                    else
-                    {
-                        WriteError("ERROR while removing PW:");
-                        WriteError(ex.ToString());
-                    }
+                    Log.WriteInfo("INFO: password removed successfully.");
+                }
+                else
+                {
+                    Log.WriteError("ERROR: Failed to remove password.");
                 }
 
-                if (blnIsOk)
+                Log.WriteInfo("INFO: Checking if file has blank password...");
+                if (Logic.IsFileHasBlankPassword(strTargetFile))
                 {
-                    try
-                    {
-                        using (var connWithoutPw = new SQLiteConnection($"Data Source={strTargetFile};"))
-                        {
-                            WriteInfo("INFO: opening connection 2 to test blank PW...");
-                            connWithoutPw.Open();
-
-                            if (connWithoutPw.State == ConnectionState.Open)
-                            {
-                                WriteInfo("INFO: Opened connection 2 successfully - password removed successfully!");
-                            }
-                            else
-                            {
-                                WriteError("ERROR: connection 2 failed. double check your PW!");
-                            }
-                            connWithoutPw.Close();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        WriteError("ERROR while testing if PW removed successfully:");
-                        WriteError(ex.ToString());
-                    }
+                    Log.WriteInfo("INFO: file can now be accessed with blank password.");
+                }
+                else
+                {
+                    Log.WriteError("ERROR: unable to access the file with blank password.");
                 }
             }
 
             if (args.Length == 0)
             {
-                WriteInfo("Press any key to continue...");
+                Log.WriteInfo("Press any key to continue...");
                 Console.ReadKey();
             }
         }
 
-        private static void WriteError(string strError)
+        private static void WriteIntro(string strAssemblyFileName)
         {
-            Console.BackgroundColor = ConsoleColor.Black;
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine(strError);
-            Console.ResetColor();
-        }
+            Log.WriteRegular("param 0 = File Name [Optional - will look for the all *.SQLite|*.SQLite3 files in current folder]");
+            Log.WriteRegular("param 1 = PW [Optional - can be set in config file]");
+            Log.WriteRegular("");
+            Log.WriteInfo("===== Examples: ===");
+            Log.WriteRegular("To remove PW from fullpath file:");
+            Log.WriteInfo($@"{strAssemblyFileName} ""C:\fullpath\file1.sqlite3"" ""mysuperpassword"" ");
+            Log.WriteRegular("");
+            Log.WriteRegular("To remove PW from local folder and load PW from config file:");
+            Log.WriteInfo($@"{strAssemblyFileName} ""file1.sqlite3""");
 
-        private static void WriteInfo(string strInfo)
-        {
-            Console.BackgroundColor = ConsoleColor.Black;
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine(strInfo);
-            Console.ResetColor();
-        }
-
-        private static void WriteTitle(string strTitle)
-        {
-            Console.BackgroundColor = ConsoleColor.Blue;
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine(strTitle);
-            Console.ResetColor();
+            Log.WriteRegular("");
+            Log.WriteRegular("To remove PW from *.SQLite3 files in local folder and load PW from config file:");
+            Log.WriteInfo(strAssemblyFileName);
+            Log.WriteRegular("");
         }
     }
 }
